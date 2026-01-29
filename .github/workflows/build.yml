@@ -41,10 +41,17 @@ jobs:
 
     - name: Build with PyInstaller (Windows)
       if: matrix.os == 'windows-latest'
-      run: pyinstaller --onefile --windowed --noupx --collect-all PySide6 --collect-all shiboken6 --name ${{ matrix.binary_name }} main.py
+      run: pyinstaller --onedir --windowed --noupx --collect-all PySide6 --collect-all shiboken6 --name PLauncher-Windows main.py
+
+    - name: Package Windows Build
+      if: matrix.os == 'windows-latest'
+      run: |
+        cd dist
+        powershell Compress-Archive -Path PLauncher-Windows -DestinationPath PLauncher-Windows.zip
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.artifact_name }}
-        path: dist/${{ matrix.binary_name }}
+        path: |
+          ${{ matrix.os == 'windows-latest' && 'dist/PLauncher-Windows.zip' || format('dist/{0}', matrix.binary_name) }}
