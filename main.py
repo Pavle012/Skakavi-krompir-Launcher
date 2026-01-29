@@ -1,4 +1,6 @@
 import sys
+import os
+import signal
 from PySide6.QtCore import QProcess
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout,
@@ -20,7 +22,7 @@ layout = QVBoxLayout(window)
 title = QLabel("PLauncher")
 title.setStyleSheet("font-size: 20px; font-weight: bold;")
 
-status = QLabel("Ready")
+status = QLabel("")
 
 
 process = None
@@ -37,7 +39,8 @@ def launch_system_skakavi_krompir():
         process.errorOccurred.connect(handle_error)
 
     if process.state() == QProcess.ProcessState.NotRunning:
-        process.start("/usr/local/bin/skakavi-krompir-alpha")
+        # Use setsid to start the game in its own process group
+        process.start("setsid", ["/usr/local/bin/skakavi-krompir-alpha"])
     else:
         status.setText("Already running")
 
@@ -53,13 +56,34 @@ def handle_error(error):
     else:
         status.setText(f"Process Error: {error}")
 
-launch_btn = QPushButton("Launch")
+def kill_system_skakavi_krompir():
+    global process
+    if process is not None and process.state() == QProcess.ProcessState.Running:
+        pid = process.processId()
+        try:
+            # Kill the process group to ensure children like the game window are also killed
+            os.killpg(os.getpgid(pid), signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            # Fallback if PGID cannot be reached or identified
+            process.kill()
+            
+        process.waitForFinished(1000)
+        process = None
+        status.setText("Killed")
+    else:
+        status.setText("Not running")
+
+launch_btn = QPushButton("Launch System Skakavi Krompir")
 launch_btn.clicked.connect(launch_system_skakavi_krompir)
+
+kill_btn = QPushButton("Kill System Skakavi Krompir")
+kill_btn.clicked.connect(kill_system_skakavi_krompir)
 
 layout.addWidget(title)
 layout.addWidget(status)
 layout.addStretch()
 layout.addWidget(launch_btn)
+layout.addWidget(kill_btn)
 
 window.show()
 sys.exit(app.exec())
