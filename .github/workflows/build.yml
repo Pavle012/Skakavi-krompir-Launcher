@@ -43,6 +43,15 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: pyinstaller --onedir --windowed --noupx --collect-all PySide6 --collect-all shiboken6 --name PLauncher-Windows main.py
 
+    - name: Copy ICU DLLs (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      run: |
+        $pysidePath = python -c "import PySide6; import os; print(os.path.dirname(PySide6.__file__))"
+        Write-Host "PySide6 path: $pysidePath"
+        Copy-Item "$pysidePath\icu*.dll" -Destination "dist\PLauncher-Windows\_internal\PySide6\" -Force -ErrorAction SilentlyContinue
+        Get-ChildItem "dist\PLauncher-Windows\_internal\PySide6\icu*.dll"
+
     - name: Package Windows Build
       if: matrix.os == 'windows-latest'
       run: |
