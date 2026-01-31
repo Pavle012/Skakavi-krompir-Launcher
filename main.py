@@ -3,7 +3,7 @@ import os
 import signal
 import json
 import requests
-from PySide6.QtCore import QProcess, Qt, QSize, QThread, Signal
+from PySide6.QtCore import QProcess, Qt, QSize, QThread, Signal, QIODevice
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout,
     QLabel, QPushButton, QHBoxLayout,
@@ -245,9 +245,9 @@ def remove_selected_instance():
     
     reply = QMessageBox.question(window, "Confirm Removal", 
                                  f"Are you sure you want to remove '{instance_name}'?\nThis will not delete the files, only the launcher entry.",
-                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
     
-    if reply == QMessageBox.Yes:
+    if reply == QMessageBox.StandardButton.Yes:
         instance_manager.remove_instance(instance_index)
         refresh_instances()
 
@@ -259,8 +259,8 @@ def show_logs():
     log_viewer.raise_()
 
 def download_instance_dialog():
-    progress = QProgressDialog("Fetching releases from GitHub...", None, 0, 0, window)
-    progress.setWindowModality(Qt.WindowModal)
+    progress = QProgressDialog("Fetching releases from GitHub...", "Cancel", 0, 0, window)
+    progress.setWindowModality(Qt.WindowModality.WindowModal)
     progress.show()
     QApplication.processEvents()
     
@@ -280,9 +280,9 @@ def download_instance_dialog():
     
     picker = VersionPicker(releases)
     dialog.layout().addWidget(picker)
-    dialog.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+    dialog.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
     
-    if dialog.exec() == QMessageBox.Ok:
+    if dialog.exec() == QMessageBox.StandardButton.Ok:
         version, asset = picker.get_selected()
         if asset:
             start_download(asset["browser_download_url"], asset["name"], version)
@@ -292,7 +292,7 @@ def start_download(url, filename, version):
     downloader = GameDownloader(url, filename, version)
     
     progress_dialog = QProgressDialog(f"Downloading {filename}...", "Cancel", 0, 100, window)
-    progress_dialog.setWindowModality(Qt.WindowModal)
+    progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
     
     downloader.progress.connect(progress_dialog.setValue)
     downloader.finished.connect(lambda name, path: handle_download_finished(name, path, progress_dialog))
@@ -317,68 +317,50 @@ def refresh_instances():
     
     for inst in instance_manager.instances:
         item = QListWidgetItem(icon, inst["name"])
-        item.setTextAlignment(Qt.AlignCenter)
+        item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         instance_list.addItem(item)
 
 app = QApplication(sys.argv)
 
-window = QWidget()
-window.setWindowTitle("Skakavi krompir launcher")
-window.resize(700, 500)
+from PySide6.QtUiTools import QUiLoader
+from PySide6.QtCore import QFile
 
-layout = QVBoxLayout(window)
+# Load the UI file
+ui_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mainwindow.ui")
+ui_file = QFile(ui_file_path)
+if not ui_file.open(QIODevice.ReadOnly):
+    print(f"Cannot open {ui_file_path}: {ui_file.errorString()}")
+    sys.exit(-1)
 
-title = QLabel("Skakavi krompir launcher")
-title.setStyleSheet("font-size: 24px; font-weight: bold; margin-bottom: 10px;")
-layout.addWidget(title)
+loader = QUiLoader()
+window = loader.load(ui_file)
+ui_file.close()
 
-status = QLabel("Ready")
-status.setStyleSheet("font-size: 14px; color: #666; margin-bottom: 10px;")
-layout.addWidget(status)
+if not window:
+    print(loader.errorString())
+    sys.exit(-1)
 
-instance_list = QListWidget()
-instance_list.setViewMode(QListWidget.ViewMode.IconMode)
-instance_list.setIconSize(QSize(64, 64))
-instance_list.setMovement(QListWidget.Movement.Static)
-instance_list.setResizeMode(QListWidget.ResizeMode.Adjust)
-instance_list.setSpacing(10)
-instance_list.setWrapping(True)
+# Find widgets
+status = window.findChild(QLabel, "statusLabel")
+instance_list = window.findChild(QListWidget, "instanceList")
+add_inst_btn = window.findChild(QPushButton, "addBtn")
+remove_inst_btn = window.findChild(QPushButton, "removeBtn")
+download_btn = window.findChild(QPushButton, "downloadBtn")
+log_btn = window.findChild(QPushButton, "logsBtn")
+launch_btn = window.findChild(QPushButton, "launchBtn")
+kill_btn = window.findChild(QPushButton, "killBtn")
+
+# Connect signals
 instance_list.itemDoubleClicked.connect(lambda: launch_instance())
-refresh_instances()
-layout.addWidget(instance_list, 1)
-
-button_layout = QHBoxLayout()
-add_inst_btn = QPushButton("Add")
 add_inst_btn.clicked.connect(add_new_instance)
-
-# upcoming feature
-# rename_inst_btn = QPushButton("Rename")
-# rename_inst_btn.clicked.connect(rename_selected_instance)
-
-remove_inst_btn = QPushButton("Remove")
 remove_inst_btn.clicked.connect(remove_selected_instance)
-
-download_btn = QPushButton("Download")
 download_btn.clicked.connect(download_instance_dialog)
-
-log_btn = QPushButton("Logs")
 log_btn.clicked.connect(show_logs)
-
-launch_btn = QPushButton("Launch")
 launch_btn.clicked.connect(launch_instance)
-
-kill_btn = QPushButton("Kill")
 kill_btn.clicked.connect(kill_instance)
 
-button_layout.addWidget(add_inst_btn)
-# button_layout.addWidget(rename_inst_btn) # upcoming feature
-button_layout.addWidget(remove_inst_btn)
-button_layout.addWidget(download_btn)
-button_layout.addStretch()
-button_layout.addWidget(log_btn)
-button_layout.addWidget(kill_btn)
-button_layout.addWidget(launch_btn)
-layout.addLayout(button_layout)
+# Initialize data
+refresh_instances()
 
 # Initialize log viewer
 log_viewer = LogViewer(window)
