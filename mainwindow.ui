@@ -36,9 +36,6 @@
    </item>
    <item>
     <widget class="QListWidget" name="instanceList">
-     <property name="viewMode">
-      <enum>QListView::IconMode</enum>
-     </property>
      <property name="iconSize">
       <size>
        <width>64</width>
@@ -48,14 +45,17 @@
      <property name="movement">
       <enum>QListView::Static</enum>
      </property>
+     <property name="isWrapping" stdset="0">
+      <bool>true</bool>
+     </property>
      <property name="resizeMode">
       <enum>QListView::Adjust</enum>
      </property>
      <property name="spacing">
       <number>10</number>
      </property>
-     <property name="isWrapping" stdset="0">
-      <bool>true</bool>
+     <property name="viewMode">
+      <enum>QListView::IconMode</enum>
      </property>
     </widget>
    </item>
@@ -66,6 +66,9 @@
        <property name="text">
         <string>Add</string>
        </property>
+       <property name="icon">
+        <iconset theme="list-add"/>
+       </property>
       </widget>
      </item>
      <item>
@@ -73,12 +76,18 @@
        <property name="text">
         <string>Remove</string>
        </property>
+       <property name="icon">
+        <iconset theme="edit-delete"/>
+       </property>
       </widget>
      </item>
      <item>
       <widget class="QPushButton" name="downloadBtn">
        <property name="text">
         <string>Download</string>
+       </property>
+       <property name="icon">
+        <iconset theme="download"/>
        </property>
       </widget>
      </item>
@@ -100,6 +109,9 @@
        <property name="text">
         <string>Logs</string>
        </property>
+       <property name="icon">
+        <iconset theme="view-list-text"/>
+       </property>
       </widget>
      </item>
      <item>
@@ -107,12 +119,18 @@
        <property name="text">
         <string>Kill</string>
        </property>
+       <property name="icon">
+        <iconset theme="process-stop"/>
+       </property>
       </widget>
      </item>
      <item>
       <widget class="QPushButton" name="launchBtn">
        <property name="text">
         <string>Launch</string>
+       </property>
+       <property name="icon">
+        <iconset theme="media-playback-start"/>
        </property>
       </widget>
      </item>
