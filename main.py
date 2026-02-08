@@ -4,8 +4,9 @@ import shutil
 import signal
 import json
 import requests
+import time
 from PySide6.QtWidgets import QStyleFactory
-from PySide6.QtCore import QProcess, Qt, QSize, QThread, Signal, QIODevice
+from PySide6.QtCore import QProcess, Qt, QSize, QThread, Signal, QIODevice, QTimer
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout,
     QLabel, QPushButton, QHBoxLayout,
@@ -17,7 +18,8 @@ from PySide6.QtWidgets import (
     QLabel, QPushButton, QHBoxLayout,
     QFileDialog, QMessageBox, QListWidget, QListWidgetItem,
     QAbstractItemView, QProgressDialog, QComboBox, QDialog,
-    QPlainTextEdit, QTabWidget, QCheckBox, QTextBrowser, QLineEdit
+    QPlainTextEdit, QTabWidget, QCheckBox, QTextBrowser, QLineEdit, QSpinBox,
+    QDoubleSpinBox, QFormLayout
 )
 from PySide6.QtGui import QIcon, QPixmap, QPalette, QColor, QDesktopServices
 from PySide6.QtCore import QUrl
@@ -284,6 +286,10 @@ class EditInstanceDialog(QDialog):
 
         # General Tab
         self.create_general_tab()
+        
+        # Settings Tab
+        if self.instance_dir:
+            self.create_settings_tab()
 
         # Instance Mods Tab
         if self.instance_dir:
@@ -340,6 +346,84 @@ class EditInstanceDialog(QDialog):
         
         self.instance_manager.update_instance(self.instance_index, self.instance_data)
         QMessageBox.information(self, "Success", "Instance settings saved!")
+
+    def create_settings_tab(self):
+        tab_widget = load_ui("settings_tab.ui")
+        
+        self.jump_spin = tab_widget.findChild(QSpinBox, "jumpVelocitySpin")
+        self.scroll_spin = tab_widget.findChild(QSpinBox, "scrollSpeedSpin")
+        self.fps_spin = tab_widget.findChild(QSpinBox, "maxFpsSpin")
+        self.speed_inc_spin = tab_widget.findChild(QDoubleSpinBox, "speedIncreaseSpin")
+        self.player_name_edit = tab_widget.findChild(QLineEdit, "playerNameEdit")
+        self.remember_check = tab_widget.findChild(QCheckBox, "rememberNameCheck")
+        save_btn = tab_widget.findChild(QPushButton, "saveSettingsBtn")
+        
+        self.load_game_settings()
+        
+        save_btn.clicked.connect(self.save_game_settings)
+        
+        self.tabs.insertTab(1, tab_widget, "Game Settings")
+
+    def get_settings_path(self):
+        if not self.instance_dir:
+            return None
+        return os.path.join(self.instance_dir, "data", "settings.txt")
+
+    def load_game_settings(self):
+        settings_path = self.get_settings_path()
+        if not settings_path or not os.path.exists(settings_path):
+             return
+             
+        # Initialize defaults
+        settings = {
+            "jumpVelocity": 12,
+            "scrollPixelsPerFrame": 8,
+            "maxFps": 60,
+            "speed_increase": 0.03,
+            "name": "",
+            "rememberName": "False"
+        }
+        
+        try:
+            with open(settings_path, "r") as f:
+                for line in f:
+                    if "=" in line:
+                        k, v = line.strip().split("=", 1)
+                        settings[k] = v
+        except Exception:
+            pass
+            
+        try:
+            self.jump_spin.setValue(int(settings["jumpVelocity"]))
+            self.scroll_spin.setValue(int(settings["scrollPixelsPerFrame"]))
+            self.fps_spin.setValue(int(settings["maxFps"]))
+            self.speed_inc_spin.setValue(float(settings["speed_increase"]))
+            self.player_name_edit.setText(settings["name"])
+            self.remember_check.setChecked(settings["rememberName"] == "True")
+        except ValueError:
+            pass
+
+    def save_game_settings(self):
+        settings_path = self.get_settings_path()
+        if not settings_path:
+            return
+            
+        data_dir = os.path.dirname(settings_path)
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+            
+        try:
+            with open(settings_path, "w") as f:
+                f.write(f"jumpVelocity={self.jump_spin.value()}\n")
+                f.write(f"scrollPixelsPerFrame={self.scroll_spin.value()}\n")
+                f.write(f"maxFps={self.fps_spin.value()}\n")
+                f.write(f"speed_increase={self.speed_inc_spin.value()}\n")
+                f.write(f"name={self.player_name_edit.text()}\n")
+                f.write(f"rememberName={self.remember_check.isChecked()}\n")
+                
+            QMessageBox.information(self, "Success", "Game settings saved!")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save settings: {e}")
 
     def create_mod_tab(self, directory, title):
         tab_widget = load_ui("mod_tab.ui")
@@ -487,11 +571,51 @@ class InstanceManager:
             self.save_instances()
 
 instance_manager = InstanceManager()
+instance_manager = InstanceManager()
 process = None
 downloader = None
 log_viewer = None
+status_timer = None
+current_monitoring_path = None
+
+def check_game_status():
+    if not current_monitoring_path:
+        return
+        
+    status_file = os.path.join(current_monitoring_path, "status.json")
+    if os.path.exists(status_file):
+        try:
+            with open(status_file, "r") as f:
+                data = json.load(f)
+                
+            state = data.get("state", "unknown")
+            score = data.get("score", 0)
+            
+            # Check if timestamp is too old (game crashed/closed without updating)
+            timestamp = data.get("timestamp", 0)
+            if time.time() - timestamp > 5: # 5 seconds timeout
+                 status.setText("Status: Not Running (Timeout)")
+                 return
+                 
+            if state == "playing":
+                status.setText(f"Playing - Score: {score}")
+            elif state == "paused":
+                status.setText(f"Paused - Score: {score}")
+            elif state == "game_over":
+                status.setText(f"Game Over - Final Score: {score}")
+            elif state == "stopped":
+                status.setText("Finished")
+            else:
+                status.setText(f"Status: {state}")
+                
+        except Exception:
+            pass # File read error or json error, ignore
 
 def handle_finished(exit_code, exit_status):
+    global status_timer
+    if status_timer:
+        status_timer.stop()
+        
     if exit_status == QProcess.ExitStatus.CrashExit:
         status.setText("Crashed")
     else:
@@ -571,7 +695,34 @@ def launch_instance():
         if not os.path.exists(working_dir):
             os.makedirs(working_dir, exist_ok=True)
             
-        process.start("setsid", [instance_path])
+        # Data directory for this instance
+        data_dir = os.path.join(working_dir, "data")
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+            
+        global current_monitoring_path, status_timer
+        current_monitoring_path = data_dir
+        
+        # Start monitoring
+        status_timer = QTimer()
+        status_timer.timeout.connect(check_game_status)
+        status_timer.start(1000) # Check every second
+            
+        # Launch with arguments. 
+        # Note: We need to pass the arguments to the python script or executable.
+        # Assuming instance_path is the executable or script
+        
+        args = [instance_path, "--data-dir", data_dir]
+        
+        # If it's a python script, we might need to run it with python
+        if instance_path.endswith(".py"):
+             program = sys.executable
+             args = [instance_path, "--data-dir", data_dir]
+             process.start(program, args)
+        else:
+             # For compiled entry, we pass args directly
+             process.start(instance_path, ["--data-dir", data_dir])
+
     else:
         status.setText("Already running")
 
