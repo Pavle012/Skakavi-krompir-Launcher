@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QLabel, QPushButton, QHBoxLayout,
     QFileDialog, QMessageBox, QListWidget, QListWidgetItem,
     QAbstractItemView, QProgressDialog, QComboBox, QDialog,
-    QPlainTextEdit, QTabWidget, QCheckBox, QTextBrowser
+    QPlainTextEdit, QTabWidget, QCheckBox, QTextBrowser, QLineEdit
 )
 from PySide6.QtGui import QIcon, QPixmap, QPalette, QColor, QDesktopServices
 from PySide6.QtCore import QUrl
@@ -253,11 +253,14 @@ class RepoBrowserDialog(QDialog):
             progress.close()
             QMessageBox.critical(self, "Error", f"Failed to download mod: {e}")
 
-class ModManagerDialog(QDialog):
-    def __init__(self, instance_path, parent=None):
+class EditInstanceDialog(QDialog):
+    def __init__(self, instance_manager, instance_index, parent=None):
         super().__init__(parent)
-        self.instance_path = instance_path
-        self.instance_dir = os.path.dirname(instance_path) if instance_path else None
+        self.instance_manager = instance_manager
+        self.instance_index = instance_index
+        self.instance_data = self.instance_manager.instances[instance_index]
+        self.instance_path = self.instance_data["path"]
+        self.instance_dir = os.path.dirname(self.instance_path) if self.instance_path else None
         
         # Determine global mod directory
         if sys.platform == "win32":
@@ -266,7 +269,8 @@ class ModManagerDialog(QDialog):
             self.global_mod_dir = os.path.join(os.path.expanduser("~"), ".local", "share", "SkakaviKrompir", "mods")
 
         # Load UI
-        self.ui = load_ui("mod_manager.ui", self)
+        self.ui = load_ui("edit_instance.ui", self)
+        self.setWindowTitle("Instance Editor")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.ui)
@@ -278,6 +282,9 @@ class ModManagerDialog(QDialog):
         close_btn = self.ui.findChild(QPushButton, "closeBtn")
         close_btn.clicked.connect(self.accept)
 
+        # General Tab
+        self.create_general_tab()
+
         # Instance Mods Tab
         if self.instance_dir:
             instance_mods_path = os.path.join(self.instance_dir, "mods")
@@ -285,6 +292,54 @@ class ModManagerDialog(QDialog):
 
         # Global Mods Tab
         self.create_mod_tab(self.global_mod_dir, "Global Mods")
+
+    def create_general_tab(self):
+        tab_widget = load_ui("general_tab.ui")
+        
+        self.name_edit = tab_widget.findChild(QLineEdit, "nameEdit")
+        self.icon_preview = tab_widget.findChild(QLabel, "iconPreview")
+        change_icon_btn = tab_widget.findChild(QPushButton, "changeIconBtn")
+        save_btn = tab_widget.findChild(QPushButton, "saveBtn")
+        
+        # Load current data
+        self.name_edit.setText(self.instance_data["name"])
+        self.current_icon_path = self.instance_data.get("icon_path", "")
+        self.update_icon_preview()
+        
+        # Connect signals
+        change_icon_btn.clicked.connect(self.change_icon)
+        save_btn.clicked.connect(self.save_general_settings)
+        
+        self.tabs.insertTab(0, tab_widget, "General")
+        self.tabs.setCurrentIndex(0)
+
+    def update_icon_preview(self):
+        if self.current_icon_path and os.path.exists(self.current_icon_path):
+            pixmap = QPixmap(self.current_icon_path)
+        else:
+            pixmap = QIcon("icon.png").pixmap(64, 64)
+            if pixmap.isNull():
+                 pixmap = QIcon.fromTheme("applications-games").pixmap(64, 64)
+        
+        self.icon_preview.setPixmap(pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+
+    def change_icon(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Icon", "", "Images (*.png *.jpg *.ico)")
+        if file_path:
+            self.current_icon_path = file_path
+            self.update_icon_preview()
+
+    def save_general_settings(self):
+        new_name = self.name_edit.text()
+        if not new_name:
+            QMessageBox.warning(self, "Warning", "Instance name cannot be empty.")
+            return
+
+        self.instance_data["name"] = new_name
+        self.instance_data["icon_path"] = self.current_icon_path
+        
+        self.instance_manager.update_instance(self.instance_index, self.instance_data)
+        QMessageBox.information(self, "Success", "Instance settings saved!")
 
     def create_mod_tab(self, directory, title):
         tab_widget = load_ui("mod_tab.ui")
@@ -421,6 +476,11 @@ class InstanceManager:
         self.instances.append({"name": name, "path": path})
         self.save_instances()
 
+    def update_instance(self, index, new_data):
+        if 0 <= index < len(self.instances):
+            self.instances[index] = new_data
+            self.save_instances()
+
     def remove_instance(self, index):
         if 0 <= index < len(self.instances):
             del self.instances[index]
@@ -465,7 +525,12 @@ def update_selected_instance_details(current=None, previous=None):
             instance_name_label.setText(instance["name"])
             
             # Set icon
-            pixmap = QIcon("icon.png").pixmap(128, 128)
+            icon_path = instance.get("icon_path")
+            if icon_path and os.path.exists(icon_path):
+                 pixmap = QIcon(icon_path).pixmap(128, 128)
+            else:
+                 pixmap = QIcon("icon.png").pixmap(128, 128)
+                 
             if pixmap.isNull():
                  pixmap = QIcon.fromTheme("applications-games").pixmap(128, 128)
             instance_icon_label.setPixmap(pixmap)
@@ -609,24 +674,34 @@ def handle_download_error(err, dialog):
     dialog.close()
     QMessageBox.critical(window, "Download Error", f"Failed to download: {err}")
 
-def open_mod_manager():
+def open_instance_editor():
     current_item = instance_list.currentItem()
     if not current_item:
-        QMessageBox.warning(window, "Mods", "Please select an instance first to manage its mods.")
+        QMessageBox.warning(window, "Edit", "Please select an instance first.")
         return
 
     instance_index = instance_list.row(current_item)
-    instance = instance_manager.instances[instance_index]
-    instance_path = instance["path"]
     
-    dialog = ModManagerDialog(instance_path, window)
-    dialog.exec()
+    dialog = EditInstanceDialog(instance_manager, instance_index, window)
+    if dialog.exec():
+         # Refresh list and details if changed
+         refresh_instances()
+         update_selected_instance_details()
 
 def refresh_instances():
     instance_list.clear()
     icon = QIcon.fromTheme("applications-games", QIcon("icon.png")) 
     
     for inst in instance_manager.instances:
+        icon_path = inst.get("icon_path")
+        if icon_path and os.path.exists(icon_path):
+            pixmap = QIcon(icon_path).pixmap(64,64)
+            if pixmap.isNull():
+                 pixmap = QIcon.fromTheme("applications-games").pixmap(64, 64)
+            icon = QIcon(pixmap)
+        else:
+             icon = QIcon.fromTheme("applications-games", QIcon("icon.png"))
+        
         item = QListWidgetItem(icon, inst["name"])
         item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
         instance_list.addItem(item)
@@ -665,7 +740,7 @@ download_btn = window.findChild(QPushButton, "downloadBtn")
 log_btn = window.findChild(QPushButton, "logsBtn")
 launch_btn = window.findChild(QPushButton, "launchBtn")
 kill_btn = window.findChild(QPushButton, "killBtn")
-mods_btn = window.findChild(QPushButton, "modsBtn")
+edit_btn = window.findChild(QPushButton, "editBtn")
 instance_name_label = window.findChild(QLabel, "instanceName")
 instance_icon_label = window.findChild(QLabel, "instanceIcon")
 
@@ -678,7 +753,7 @@ download_btn.clicked.connect(download_instance_dialog)
 log_btn.clicked.connect(show_logs)
 launch_btn.clicked.connect(launch_instance)
 kill_btn.clicked.connect(kill_instance)
-mods_btn.clicked.connect(open_mod_manager)
+edit_btn.clicked.connect(open_instance_editor)
 
 # Initialize data
 refresh_instances()

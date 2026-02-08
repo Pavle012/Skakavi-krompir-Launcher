@@ -155,12 +155,12 @@
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="modsBtn">
+        <widget class="QPushButton" name="editBtn">
          <property name="text">
-          <string>Mods</string>
+          <string>Edit</string>
          </property>
          <property name="icon">
-          <iconset theme="applications-system"/>
+          <iconset theme="document-edit"/>
          </property>
         </widget>
        </item>
