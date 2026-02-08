@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>ModManagerDialog</class>
- <widget class="QDialog" name="ModManagerDialog">
+ <widget class="QWidget" name="ModManagerDialog">
   <property name="geometry">
    <rect>
     <x>0</x>

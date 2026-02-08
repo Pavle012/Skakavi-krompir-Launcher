@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>RepoBrowserDialog</class>
- <widget class="QDialog" name="RepoBrowserDialog">
+ <widget class="QWidget" name="RepoBrowserDialog">
   <property name="geometry">
    <rect>
     <x>0</x>
